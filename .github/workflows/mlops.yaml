@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  train:
+  train-and-report:
+    permissions: write-all
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -30,4 +31,52 @@ jobs:
 
       - name: Train model
         run: dvc repro --pull
+
+      - name: Setup CML
+        if: github.event_name == 'pull_request'
+        uses: iterative/setup-cml@v2
+        with:
+          version: '0.20.6'
+
+      - name: Create CML report
+        if: github.event_name == 'pull_request'
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch --depth=1 origin main:main
+
+          echo "# Experiment Report (${{ github.sha }})" >> report.md
+
+          echo "## Params workflow vs. main" >> report.md
+          dvc params diff main --md >> report.md
+
+          echo "## Metrics workflow vs. main" >> report.md
+          dvc metrics diff main --md >> report.md
+
+          dvc plots diff main
+
+          echo "## Plots" >> report.md
+
+          echo "### Training History" >> report.md
+          echo "#### main" >> report.md
+          echo '![](./dvc_plots/static/main_evaluation_plots_training_history.png "Training History")' >> report.md
+          echo "#### workspace" >> report.md
+          echo '![](./dvc_plots/static/workspace_evaluation_plots_training_history.png "Training History")' >> report.md
+
+          echo "### Predictions Preview" >> report.md
+          echo "#### main" >> report.md
+          echo '![](./dvc_plots/static/main_evaluation_plots_pred_preview.png "Predictions Preview")' >> report.md
+          echo "#### workspace" >> report.md
+          echo '![](./dvc_plots/static/workspace_evaluation_plots_pred_preview.png "Predictions Preview")' >> report.md
+
+          echo "### Confusion Matrix" >> report.md
+          echo "#### main" >> report.md
+          echo '![](./dvc_plots/static/main_evaluation_plots_confusion_matrix.png "Confusion Matrix")' >> report.md
+          echo "#### workspace" >> report.md
+          echo '![](./dvc_plots/static/workspace_evaluation_plots_confusion_matrix.png "Confusion Matrix")' >> report.md
+
+          cml comment update --target=pr --publish report.md
+
+
+
 
